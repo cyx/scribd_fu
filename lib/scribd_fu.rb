@@ -63,7 +63,13 @@ module ScribdFu
     end
 
     # Upload a file to Scribd
-    def upload(obj, file_path)
+    def upload(obj_or_array, file_path)
+      obj = 
+        case obj_or_array
+        when ActiveRecord::Base then obj_or_array
+        when Array then obj_or_array.first.constantize.find(obj_or_array.last)
+        end
+        
       begin
         res = scribd_user.upload(:file => escape(file_path), :access => access_level)
         obj.update_attributes({:ipaper_id => res.doc_id, :ipaper_access_key => res.access_key})
@@ -82,7 +88,9 @@ module ScribdFu
       raise ScribdFuError, "#{ConfigPath} does not exist" unless File.file?(ConfigPath)
 
       # Load the config file and strip any whitespace from the values
-      @config ||= YAML.load_file(ConfigPath).each_pair{|k,v| {k=>v.to_s.strip}}.symbolize_keys!
+      @config ||= YAML.load(
+        ERB.new(File.read(ConfigPath)).result
+      )[RAILS_ENV].each_pair{|k,v| {k=>v.to_s.strip}}.symbolize_keys!
     end
 
     # Get the preferred access level for iPaper documents
@@ -113,7 +121,7 @@ module ScribdFu
 
       include InstanceMethods
 
-      after_save :upload_to_scribd # This *MUST* be an after_save
+      after_commit   :upload_to_scribd # This *MUST* be an after_save
       before_destroy :destroy_ipaper_document
     end
 
@@ -180,7 +188,11 @@ module ScribdFu
     # This is called +after_save+ and cannot be called earlier,
     # so don't get any ideas.
     def upload_to_scribd
-      ScribdFu::upload(self, file_path) if scribdable?
+      # RECOMED.HACKS
+      # ScribdFu::upload(self, file_path) if scribdable?
+      if scribdable?
+        ScribdFu.async :upload, [ self.class.name, self.id ], file_path
+      end
     end
 
     # Checks whether the associated file is convertable to iPaper
