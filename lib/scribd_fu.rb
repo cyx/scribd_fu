@@ -56,7 +56,7 @@ module ScribdFu
         # Ensure we can login to Scribd, and get a handle on the account
         Scribd::API.instance.key    = config[:key]
         Scribd::API.instance.secret = config[:secret]
-        Rails.cache.fetch :scribd_user do
+        Rails.cache.fetch 'scribd_user' do
           @scribd_user = Scribd::User.login(config[:user], config[:password])
         end
       rescue
